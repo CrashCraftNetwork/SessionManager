@@ -60,6 +60,7 @@ public class SessionManager extends JavaPlugin {
                 Bukkit.getServer().shutdown();
             }
 
+            removeAllPlayerSessions(serverID); //We will force remove all sessions as they would have came from an improper shutdown
         } catch (Exception e){
             e.printStackTrace();
             Bukkit.getServer().shutdown();
@@ -87,12 +88,14 @@ public class SessionManager extends JavaPlugin {
                 }
                 Thread.sleep(100);
             }
-        } catch (InterruptedException e){
+
+            markAllSessionsClosing(serverID); //Mark all sessions as closing so next call can cleanup data.
+
+            finishClosedSessions(); //Finish all tasks off for the last time to make sure none are not processed.
+            getLogger().info("Closed all sessions");
+        } catch (InterruptedException|SQLException e){
             e.printStackTrace();
         }
-
-        finishClosedSessions(); //Finish all tasks off for the last time to make sure none are not processed.
-        getLogger().info("Closed all sessions");
     }
 
     public void registerDependency(SessionDependency dependency, String name){
@@ -132,6 +135,10 @@ public class SessionManager extends JavaPlugin {
         DB.executeUpdate("DELETE FROM sessions WHERE server_id = ? AND player_id = ?;", player_id, server_id);
     }
 
+    private void removeAllPlayerSessions(int server_id) throws SQLException{
+        DB.executeUpdate("DELETE FROM sessions WHERE server_id = ?;", server_id);
+    }
+
     void createUserSessions(int player_id, int server_id) throws SQLException{
         DB.executeInsert("INSERT IGNORE INTO sessions (player_id, server_id, isclosing) VALUES (?, ?, 0);", player_id, server_id);
     }
@@ -150,6 +157,10 @@ public class SessionManager extends JavaPlugin {
 
     void markSessionsClosing(int server_id, int player_id) throws SQLException{
         DB.executeUpdate("UPDATE sessions SET isclosing = 1 WHERE server_id != ? AND player_id = ?;", server_id, player_id);
+    }
+
+    private void markAllSessionsClosing(int server_id) throws SQLException{
+        DB.executeUpdate("UPDATE sessions SET isclosing = 1 WHERE server_id != ?", server_id);
     }
 
     private static YamlConfiguration initConfig(File configFile, Class<? extends BaseConfig> clazz, Object instance) throws Exception{
