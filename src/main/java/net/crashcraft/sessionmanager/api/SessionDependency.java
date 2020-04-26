@@ -1,7 +1,5 @@
 package net.crashcraft.sessionmanager.api;
 
-import org.bukkit.entity.Player;
-
 import java.util.UUID;
 
 public abstract class SessionDependency {

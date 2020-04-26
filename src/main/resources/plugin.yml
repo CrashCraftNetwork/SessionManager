@@ -1,0 +1,6 @@
+name: SessionManager
+version: 1.0
+description: A session managing plugin for keeping data intact
+author: Chasewhip
+main: net.crashcraft.sessionmanager.SessionManager
+api-version: 1.14

@@ -8,6 +8,7 @@ import org.bukkit.Bukkit;
 import org.bukkit.OfflinePlayer;
 import org.bukkit.configuration.InvalidConfigurationException;
 import org.bukkit.configuration.file.YamlConfiguration;
+import org.bukkit.plugin.Plugin;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.io.File;
@@ -110,7 +111,7 @@ public class SessionManager extends JavaPlugin {
 
     private void finishClosedSessions(){
         try {
-            for (DbRow row : DB.getResults("SELECT id, uuid FROM players WHERE player_id in (SELECT player_id FROM sessions WHERE server_id = ? AND isclosing = 1);", serverID)){
+            for (DbRow row : DB.getResults("SELECT id, uuid FROM players WHERE player_id IN (SELECT player_id FROM sessions WHERE server_id = ? AND isclosing = 1);", serverID)){
                 UUID uuid = UUID.fromString(row.getString("uuid"));
 
                 for (SessionDependency dependency : registeredDependency){
@@ -144,7 +145,7 @@ public class SessionManager extends JavaPlugin {
     }
 
     boolean hasExistingSession(int player_id) throws SQLException{
-        return DB.getFirstColumnResults("SELECT * FROM sessions WHERE isclosing = 1 AND player_id = ?;", player_id).size() > 0;
+        return DB.getFirstColumnResults("SELECT player_id FROM sessions WHERE isclosing = 1 AND player_id = ?;", player_id).size() > 0;
     }
 
     int getPlayerID(UUID uuid) throws SQLException {
@@ -152,7 +153,7 @@ public class SessionManager extends JavaPlugin {
     }
 
     private int getServerID(String name) throws SQLException{
-        return (int) DB.getFirstColumn("SELECT id FROM servers WHERE name = ?", name);
+        return (int) DB.getFirstColumn("SELECT id FROM servers WHERE `name` = ?", name);
     }
 
     void markSessionsClosing(int server_id, int player_id) throws SQLException{
@@ -207,5 +208,9 @@ public class SessionManager extends JavaPlugin {
 
     int getServerID() {
         return serverID;
+    }
+
+    Set<SessionDependency> getRegisteredDependency() {
+        return registeredDependency;
     }
 }
