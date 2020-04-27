@@ -5,12 +5,12 @@
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>net.craschraft</groupId>
-    <artifactId>CrashCore</artifactId>
-    <version>3.1.3</version>
+    <artifactId>SessionManager</artifactId>
+    <version>1.0</version>
 
     <properties>
         <author>Chase</author>
-        <mainClass>net.crashcraft.CrashCore</mainClass>
+        <mainClass>net.crashcraft.sessionmanager.SessionManager</mainClass>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     </properties>
 

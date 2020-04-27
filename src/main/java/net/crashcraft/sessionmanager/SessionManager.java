@@ -8,7 +8,6 @@ import org.bukkit.Bukkit;
 import org.bukkit.OfflinePlayer;
 import org.bukkit.configuration.InvalidConfigurationException;
 import org.bukkit.configuration.file.YamlConfiguration;
-import org.bukkit.plugin.Plugin;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.io.File;
@@ -25,8 +24,8 @@ public class SessionManager extends JavaPlugin {
     private static SessionManager manager;
 
     private int serverID = 0;
-    private Set<SessionDependency> registeredDependency;
     private int taskID = 0;
+    private Set<SessionDependency> registeredDependency;
 
     @Override
     public void onLoad(){
@@ -38,6 +37,8 @@ public class SessionManager extends JavaPlugin {
         manager = this;
         registeredDependency = new HashSet<>();
         File dataFolder = getDataFolder();
+
+        dataFolder.mkdirs();
 
         try {
             initConfig(new File(dataFolder, "config.yml"), GlobalConfig.class, null);
@@ -82,7 +83,7 @@ public class SessionManager extends JavaPlugin {
         Bukkit.getScheduler().cancelTask(taskID);
 
         try {
-            while (!Bukkit.getScheduler().isCurrentlyRunning(taskID)){
+            while (Bukkit.getScheduler().isCurrentlyRunning(taskID)){
                 if (System.currentTimeMillis() >= endTime){
                     getLogger().severe("Sessions manager task has not closed after 30 seconds");
                     break;
@@ -111,28 +112,36 @@ public class SessionManager extends JavaPlugin {
 
     private void finishClosedSessions(){
         try {
-            for (DbRow row : DB.getResults("SELECT id, uuid FROM players WHERE player_id IN (SELECT player_id FROM sessions WHERE server_id = ? AND isclosing = 1);", serverID)){
+            for (DbRow row : DB.getResults("SELECT id, uuid FROM players WHERE id IN (SELECT player_id FROM sessions WHERE server_id = ? AND isclosing = 1);", serverID)){
                 UUID uuid = UUID.fromString(row.getString("uuid"));
-
-                for (SessionDependency dependency : registeredDependency){
-                    dependency.onSessionClose(uuid);
-                }
-
-                OfflinePlayer player = Bukkit.getOfflinePlayer(uuid);
-                if (player.isOnline()){
-                    player.getPlayer().kickPlayer("Kicking User for closed session on server"); // This should not show up as the proxy is mid switch but it does ensure the session is closed
-                }
-
                 int player_id = row.getInt("id");
 
-                removePlayerSession(player_id, serverID);
+                finishClosedSession(uuid, player_id);
             }
         } catch (SQLException e){
             e.printStackTrace();
         }
     }
 
-    private void removePlayerSession(int player_id, int server_id) throws SQLException{
+    void finishClosedSession(UUID uuid, int player_id) throws SQLException{
+        for (SessionDependency dependency : registeredDependency){
+            dependency.onSessionClose(uuid);
+        }
+
+        OfflinePlayer player = Bukkit.getOfflinePlayer(uuid);
+        if (player.isOnline()){
+            player.getPlayer().kickPlayer("Kicking User for closed session on server"); // This should not show up as the proxy is mid switch but it does ensure the session is closed
+        }
+
+        removePlayerSession(player_id, serverID);
+    }
+
+    void createUser(UUID uuid, String username) throws SQLException{
+        DB.executeInsert("INSERT INTO players (username, uuid) VALUES (?, ?) ON DUPLICATE KEY UPDATE username = VALUES(username);", username, uuid.toString());
+        DB.executeUpdateAsync("CALL `reset_ai`('players');");
+    }
+
+    void removePlayerSession(int player_id, int server_id) throws SQLException{
         DB.executeUpdate("DELETE FROM sessions WHERE server_id = ? AND player_id = ?;", player_id, server_id);
     }
 
@@ -140,16 +149,28 @@ public class SessionManager extends JavaPlugin {
         DB.executeUpdate("DELETE FROM sessions WHERE server_id = ?;", server_id);
     }
 
+    boolean hasSessionOpen(int player_id, int server_id) throws SQLException{
+        return DB.getFirstColumnResults("SELECT player_id FROM sessions WHERE isclosing = 0 AND player_id = ? AND server_id = ?;", player_id, server_id).size() > 0;
+    }
+
     void createUserSessions(int player_id, int server_id) throws SQLException{
         DB.executeInsert("INSERT IGNORE INTO sessions (player_id, server_id, isclosing) VALUES (?, ?, 0);", player_id, server_id);
     }
 
-    boolean hasExistingSession(int player_id) throws SQLException{
+    boolean hasClosingSessionAnywhere(int player_id) throws SQLException{
         return DB.getFirstColumnResults("SELECT player_id FROM sessions WHERE isclosing = 1 AND player_id = ?;", player_id).size() > 0;
     }
 
+    boolean hasClosingSession(int player_id, int server_id) throws SQLException{
+        return DB.getFirstColumnResults("SELECT player_id FROM sessions WHERE isclosing = 1 AND player_id = ? AND server_id = ?;", player_id, server_id).size() > 0;
+    }
+
     int getPlayerID(UUID uuid) throws SQLException {
-        return (int) DB.getFirstColumn("SELECT id FROM players WHERE uuid = ?", uuid.toString()); //Maybe no toString?
+        Object value = DB.getFirstColumn("SELECT id FROM players WHERE uuid = ?", uuid.toString());
+        if (value == null){
+            return 0;
+        }
+        return (int) value;
     }
 
     private int getServerID(String name) throws SQLException{
