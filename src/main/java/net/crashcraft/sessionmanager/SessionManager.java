@@ -8,6 +8,7 @@ import org.bukkit.Bukkit;
 import org.bukkit.OfflinePlayer;
 import org.bukkit.configuration.InvalidConfigurationException;
 import org.bukkit.configuration.file.YamlConfiguration;
+import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.io.File;
@@ -15,9 +16,8 @@ import java.io.IOException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.sql.SQLException;
-import java.util.HashSet;
-import java.util.Set;
-import java.util.UUID;
+import java.util.*;
+import java.util.concurrent.CompletableFuture;
 import java.util.logging.Level;
 
 public class SessionManager extends JavaPlugin {
@@ -26,6 +26,7 @@ public class SessionManager extends JavaPlugin {
     private int serverID = 0;
     private int taskID = 0;
     private Set<SessionDependency> registeredDependency;
+    private Set<CompletableFuture<Void>> closingWaitList;
 
     @Override
     public void onLoad(){
@@ -36,6 +37,7 @@ public class SessionManager extends JavaPlugin {
 
         manager = this;
         registeredDependency = new HashSet<>();
+        closingWaitList = new HashSet<>();
         File dataFolder = getDataFolder();
 
         dataFolder.mkdirs();
@@ -112,25 +114,73 @@ public class SessionManager extends JavaPlugin {
 
     private void finishClosedSessions(){
         try {
+            Set<CompletableFuture<Void>> futures = new HashSet<>();
+            HashMap<UUID, Integer> players = new HashMap<>();
+
             for (DbRow row : DB.getResults("SELECT id, uuid FROM players WHERE id IN (SELECT player_id FROM sessions WHERE server_id = ? AND isclosing = 1);", serverID)){
                 UUID uuid = UUID.fromString(row.getString("uuid"));
                 int player_id = row.getInt("id");
 
-                finishClosedSession(uuid, player_id);
+                futures.addAll(finishClosedSessionsAsync(uuid)); // adding all futures, at this point most things should be closed by now
+                players.putIfAbsent(uuid, player_id);
+            }
+
+            for (CompletableFuture<Void> future : futures){
+                future.join(); // make sure the futures are complete
+            }
+
+            for (Map.Entry<UUID, Integer> entry : players.entrySet()){
+                finishClosingSession(entry.getValue(), entry.getKey()); // finish up by kicking the player
             }
         } catch (SQLException e){
             e.printStackTrace();
         }
     }
 
+    @SuppressWarnings("Duplicates")
     void finishClosedSession(UUID uuid, int player_id) throws SQLException{
+        Set<CompletableFuture<Void>> futures = new HashSet<>();
+
         for (SessionDependency dependency : registeredDependency){
             dependency.onSessionClose(uuid);
+            CompletableFuture<Void> future = dependency.onSessionCloseWithFuture(uuid);
+            if (future != null){
+                futures.add(future);
+            }
         }
 
+        for (CompletableFuture<Void> future : futures){
+            future.join();
+        }
+
+        finishClosingSession(player_id, uuid);
+    }
+
+    @SuppressWarnings("Duplicates")
+    Set<CompletableFuture<Void>> finishClosedSessionsAsync(UUID uuid){
+        Set<CompletableFuture<Void>> futures = new HashSet<>();
+
+        for (SessionDependency dependency : registeredDependency){
+            dependency.onSessionClose(uuid);
+            CompletableFuture<Void> future = dependency.onSessionCloseWithFuture(uuid);
+            if (future != null){
+                futures.add(future);
+            }
+        }
+
+        return futures;
+    }
+
+    void finishClosingSession(int player_id, UUID uuid) throws SQLException{
         OfflinePlayer player = Bukkit.getOfflinePlayer(uuid);
         if (player.isOnline()){
-            player.getPlayer().kickPlayer("Kicking User for closed session on server"); // This should not show up as the proxy is mid switch but it does ensure the session is closed
+            Player p = player.getPlayer();
+
+            if (p == null){
+                return;
+            }
+
+            p.kickPlayer("Kicking User for closed session on server"); // This should not show up as the proxy is mid switch but it does ensure the session is closed
         }
 
         removePlayerSession(player_id, serverID);
