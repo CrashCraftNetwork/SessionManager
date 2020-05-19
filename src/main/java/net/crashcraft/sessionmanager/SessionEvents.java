@@ -58,31 +58,45 @@ public class SessionEvents implements Listener {
         }
     }
 
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onPreLoginMnoitor(AsyncPlayerPreLoginEvent event){
+        if (event.getLoginResult().equals(AsyncPlayerPreLoginEvent.Result.ALLOWED)){
+            return;
+        }
+
+        cleanup(event.getUniqueId());
+    }
+
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     public void onLeave(PlayerQuitEvent event){
         UUID uuid = event.getPlayer().getUniqueId();
 
-        Bukkit.getScheduler().runTaskLaterAsynchronously(manager, () -> { // Run task on scheduler to hop into an async context so we dont halt the main thread
-            try {
-                int player_id = manager.getPlayerID(uuid);
-
-                if (player_id == 0){
-                    manager.getLogger().severe("User has left with an invalid player id, uuid: " + uuid.toString());
-                    return;
-                }
-
-                // We check for existing session just in case it was already closed remotely by the other task
-                OfflinePlayer player = Bukkit.getOfflinePlayer(uuid);
-                if (player.isOnline()
-                        || !manager.hasClosingSession(player_id, manager.getServerID())) {  // Prevents flushing null cache data into the database from an already closed session
-                    return;
-                }
-
-                manager.markSessionsClosing(manager.getServerID(), player_id);
-                manager.finishClosedSession(uuid, player_id); // FLush caches and drop the session
-            } catch (SQLException e){
-                e.printStackTrace();
+        Bukkit.getScheduler().runTaskAsynchronously(manager, () -> { // Run task on scheduler to hop into an async context so we dont halt the main thread
+            OfflinePlayer player = Bukkit.getOfflinePlayer(uuid);
+            if (!player.isOnline()){ //TODO check if this is actually firing correctly.....
+                cleanup(uuid);
             }
-        }, 0);
+        });
+    }
+
+    private void cleanup(UUID uuid){
+        try {
+            int player_id = manager.getPlayerID(uuid);
+
+            if (player_id == 0){
+                manager.getLogger().severe("User has left with an invalid player id, uuid: " + uuid.toString());
+                return;
+            }
+
+            // We check for existing session just in case it was already closed remotely by the other task
+            if (manager.hasClosingSession(player_id, manager.getServerID())) {  // Prevents flushing null cache data into the database from an already closed session
+                return;
+            }
+
+            manager.markSessionsClosing(manager.getServerID(), player_id);
+            manager.finishClosedSession(uuid, player_id); // FLush caches and drop the session
+        } catch (SQLException e){
+            e.printStackTrace();
+        }
     }
 }

@@ -26,7 +26,6 @@ public class SessionManager extends JavaPlugin {
     private int serverID = 0;
     private int taskID = 0;
     private Set<SessionDependency> registeredDependency;
-    private Set<CompletableFuture<Void>> closingWaitList;
 
     @Override
     public void onLoad(){
@@ -37,7 +36,6 @@ public class SessionManager extends JavaPlugin {
 
         manager = this;
         registeredDependency = new HashSet<>();
-        closingWaitList = new HashSet<>();
         File dataFolder = getDataFolder();
 
         dataFolder.mkdirs();
@@ -75,7 +73,9 @@ public class SessionManager extends JavaPlugin {
     public void onEnable(){
         Bukkit.getPluginManager().registerEvents(new SessionEvents(this), this);
 
-        taskID = Bukkit.getScheduler().runTaskTimerAsynchronously(this, this::finishClosedSessions, 2, 2).getTaskId(); //Register task and get its id
+        taskID = Bukkit.getScheduler().runTaskTimerAsynchronously(this, () -> {
+            finishClosedSessions();
+            }, 2, 2).getTaskId(); //Register task and get its id
     }
 
     @Override
@@ -105,11 +105,6 @@ public class SessionManager extends JavaPlugin {
     public void registerDependency(SessionDependency dependency, String name){
         registeredDependency.add(dependency);
         getLogger().info("Session dependency registered [" + name + "]");
-    }
-
-    public void unRegisterDependency(SessionDependency dependency){
-        registeredDependency.add(dependency);
-        getLogger().info("Session dependency unRegistered");
     }
 
     private void finishClosedSessions(){
@@ -192,7 +187,7 @@ public class SessionManager extends JavaPlugin {
     }
 
     void removePlayerSession(int player_id, int server_id) throws SQLException{
-        DB.executeUpdate("DELETE FROM sessions WHERE server_id = ? AND player_id = ?;", player_id, server_id);
+        DB.executeUpdate("DELETE FROM sessions WHERE server_id = ? AND player_id = ?;", server_id, player_id);
     }
 
     private void removeAllPlayerSessions(int server_id) throws SQLException{
