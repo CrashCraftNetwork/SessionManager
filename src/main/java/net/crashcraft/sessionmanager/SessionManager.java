@@ -1,6 +1,9 @@
 package net.crashcraft.sessionmanager;
 
 import co.aikar.idb.*;
+import co.aikar.taskchain.BukkitTaskChainFactory;
+import co.aikar.taskchain.TaskChain;
+import co.aikar.taskchain.TaskChainFactory;
 import net.crashcraft.sessionmanager.api.SessionDependency;
 import net.crashcraft.sessionmanager.config.BaseConfig;
 import net.crashcraft.sessionmanager.config.GlobalConfig;
@@ -27,8 +30,18 @@ public class SessionManager extends JavaPlugin {
     private int taskID = 0;
     private Set<SessionDependency> registeredDependency;
 
+    private static TaskChainFactory taskChainFactory;
+    public static <T> TaskChain<T> newChain() {
+        return taskChainFactory.newChain();
+    }
+    public static <T> TaskChain<T> newSharedChain(String name) {
+        return taskChainFactory.newSharedChain(name);
+    }
+
     @Override
     public void onLoad(){
+        taskChainFactory = BukkitTaskChainFactory.create(this);
+
         if (manager != null){
             getLogger().severe("Plugin was reloaded, this can cause major issues and should not be done");
             return;
@@ -73,9 +86,7 @@ public class SessionManager extends JavaPlugin {
     public void onEnable(){
         Bukkit.getPluginManager().registerEvents(new SessionEvents(this), this);
 
-        taskID = Bukkit.getScheduler().runTaskTimerAsynchronously(this, () -> {
-            finishClosedSessions();
-            }, 2, 2).getTaskId(); //Register task and get its id
+        taskID = Bukkit.getScheduler().runTaskTimerAsynchronously(this, this::finishClosedSessions, 2, 2).getTaskId(); //Register task and get its id
     }
 
     @Override
