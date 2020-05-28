@@ -7,6 +7,7 @@ import org.bukkit.plugin.java.JavaPlugin;
 import org.cache2k.Cache;
 import org.cache2k.Cache2kBuilder;
 import org.cache2k.CacheEntry;
+import org.cache2k.configuration.Cache2kConfiguration;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
@@ -31,17 +32,33 @@ public class SessionCache<T extends CachedData> extends SessionDependency {
     private final Set<Method> syncUnLoadMethods;
     private final Set<Method> asyncUnLoadMethods;
 
+    @SuppressWarnings("unchecked")
     public SessionCache(JavaPlugin plugin, CacheManager<T> manager, SessionManager sessionManager){
         this.cacheManager = manager;
         this.plugin = plugin;
         this.logger = plugin.getLogger();
-        this.cache = new Cache2kBuilder<UUID, T>() {}
+
+        this.syncLoadMethods = new HashSet<>();
+        this.asyncLoadMethods = new HashSet<>();
+        this.syncSaveMethods = new HashSet<>();
+        this.asyncSaveMethods = new HashSet<>();
+        this.syncUnLoadMethods = new HashSet<>();
+        this.asyncUnLoadMethods = new HashSet<>();
+
+        T obj = cacheManager.createCacheObject(null);
+
+        Cache2kConfiguration configuration = new Cache2kConfiguration<>();
+
+        configuration.setKeyType(UUID.class);
+        configuration.setValueType(obj.getClass());
+
+        this.cache = Cache2kBuilder.of(configuration)
                 .name(manager.getCacheName())
                 .loaderThreadCount(manager.getThreadCount())
                 .storeByReference(true)
                 .disableStatistics(true)
                 .loader((id) -> {
-                    T data = cacheManager.createCacheObject(id);
+                    T data = cacheManager.createCacheObject((UUID) id);
                     // For sync loads we just go full ham and shove it in the cache as fast as possible
                     try {
                         syncLoad(data);
@@ -54,14 +71,8 @@ public class SessionCache<T extends CachedData> extends SessionDependency {
                 })
                 .build();
 
-        syncLoadMethods = new HashSet<>();
-        asyncLoadMethods = new HashSet<>();
-        syncSaveMethods = new HashSet<>();
-        asyncSaveMethods = new HashSet<>();
-        syncUnLoadMethods = new HashSet<>();
-        asyncUnLoadMethods = new HashSet<>();
+        fetchMethods(obj.getClass());
 
-        fetchMethods();
         sessionManager.registerDependency(this, "SessionCache");
 
         Bukkit.getScheduler().scheduleSyncRepeatingTask(plugin, () -> { // Auto save
@@ -117,12 +128,12 @@ public class SessionCache<T extends CachedData> extends SessionDependency {
                 .execute();
     }
 
-    private void fetchMethods(){
+    private void fetchMethods(Class clazz){
         Set<CacheLoader> registeredLoad = new HashSet<>();
         Set<CacheLoader> registeredSave = new HashSet<>();
         Set<CacheLoader> registeredUnLoad = new HashSet<>();
 
-        for (Method method : cacheManager.createCacheObject(null).getClass().getDeclaredMethods()){
+        for (Method method : clazz.getDeclaredMethods()){
             CacheLoader annotation = method.getDeclaredAnnotation(CacheLoader.class);
             if (method.getParameterCount() != 0 || annotation == null){
                 continue;

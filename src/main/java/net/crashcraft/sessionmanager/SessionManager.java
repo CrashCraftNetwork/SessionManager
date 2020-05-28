@@ -30,6 +30,8 @@ public class SessionManager extends JavaPlugin {
     private int taskID = 0;
     private Set<SessionDependency> registeredDependency;
 
+    private boolean loaded = false;
+
     private static TaskChainFactory taskChainFactory;
     public static <T> TaskChain<T> newChain() {
         return taskChainFactory.newChain();
@@ -40,8 +42,6 @@ public class SessionManager extends JavaPlugin {
 
     @Override
     public void onLoad(){
-        taskChainFactory = BukkitTaskChainFactory.create(this);
-
         if (manager != null){
             getLogger().severe("Plugin was reloaded, this can cause major issues and should not be done");
             return;
@@ -65,18 +65,30 @@ public class SessionManager extends JavaPlugin {
                 Bukkit.getServer().shutdown();
             });
 
+
+
             Database db = PooledDatabaseOptions.builder().options(options).createHikariDatabase();
             DB.setGlobalDatabase(db);
+
+            int test = DB.getFirstColumn("SELECT 1"); //Test quarry
+            if (test == 0){
+                getLogger().severe("Server is shutting down due to no database connection for session management");
+                return;
+            }
 
             serverID = getServerID(GlobalConfig.serverName);
 
             if (serverID == 0){
                 getLogger().severe("Server is shutting down due to an invalid or not existing server id");
                 Bukkit.getServer().shutdown();
+                return;
             }
 
             removeAllPlayerSessions(serverID); //We will force remove all sessions as they would have came from an improper shutdown
+
+            loaded = true;
         } catch (Exception e){
+            getLogger().severe("An error occurred while starting the session manager.");
             e.printStackTrace();
             Bukkit.getServer().shutdown();
         }
@@ -84,17 +96,22 @@ public class SessionManager extends JavaPlugin {
 
     @Override
     public void onEnable(){
-        Bukkit.getPluginManager().registerEvents(new SessionEvents(this), this);
+        if (!loaded)
+            return;
 
+        taskChainFactory = BukkitTaskChainFactory.create(this);
+        Bukkit.getPluginManager().registerEvents(new SessionEvents(this), this);
         taskID = Bukkit.getScheduler().runTaskTimerAsynchronously(this, this::finishClosedSessions, 2, 2).getTaskId(); //Register task and get its id
     }
 
     @Override
     public void onDisable(){ //Flush and cleanup sessions
-        long endTime = System.currentTimeMillis() + 30000; // 30 second timeout
-
         Bukkit.getScheduler().cancelTask(taskID);
 
+        if (!loaded)
+            return;
+
+        long endTime = System.currentTimeMillis() + 30000; // 30 second timeout
         try {
             while (Bukkit.getScheduler().isCurrentlyRunning(taskID)){
                 if (System.currentTimeMillis() >= endTime){
