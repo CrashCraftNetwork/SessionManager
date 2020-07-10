@@ -65,15 +65,14 @@ public class SessionManager extends JavaPlugin {
                 Bukkit.getServer().shutdown();
             });
 
-
-
             Database db = PooledDatabaseOptions.builder().options(options).createHikariDatabase();
             DB.setGlobalDatabase(db);
 
-            int test = DB.getFirstColumn("SELECT 1"); //Test quarry
-            if (test == 0){
+            try {
+                DB.getFirstColumn("SELECT 1"); //Test quarry
+            } catch (SQLException e){
+                System.out.println(e.getMessage());
                 getLogger().severe("Server is shutting down due to no database connection for session management");
-                return;
             }
 
             serverID = getServerID(GlobalConfig.serverName);
