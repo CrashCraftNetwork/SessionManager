@@ -140,7 +140,7 @@ public class SessionManager extends JavaPlugin {
             HashMap<UUID, Integer> players = new HashMap<>();
 
             for (DbRow row : DB.getResults("SELECT id, uuid FROM players WHERE id IN (SELECT player_id FROM sessions WHERE server_id = ? AND isclosing = 1);", serverID)){
-                UUID uuid = UUID.fromString(row.getString("uuid"));
+                UUID uuid = UUID.fromString(new String((byte[]) row.get("uuid")));
                 int player_id = row.getInt("id");
 
                 futures.addAll(finishClosedSessionsAsync(uuid)); // adding all futures, at this point most things should be closed by now

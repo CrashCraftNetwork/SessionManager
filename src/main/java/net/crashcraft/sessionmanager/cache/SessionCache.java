@@ -5,6 +5,11 @@ import net.crashcraft.sessionmanager.SessionManager;
 import net.crashcraft.sessionmanager.api.SessionDependency;
 import org.bukkit.Bukkit;
 import org.bukkit.OfflinePlayer;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.EventPriority;
+import org.bukkit.event.Listener;
+import org.bukkit.event.player.AsyncPlayerPreLoginEvent;
+import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.cache2k.Cache;
 import org.cache2k.Cache2kBuilder;
@@ -19,7 +24,7 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.logging.Logger;
 
-public class SessionCache<T extends CachedData> extends SessionDependency {
+public class SessionCache<T extends CachedData> extends SessionDependency implements Listener {
     private final boolean DEBUG;
 
     private final JavaPlugin plugin;
@@ -27,14 +32,14 @@ public class SessionCache<T extends CachedData> extends SessionDependency {
     private final Cache<UUID, T> cache;
     private final CacheManager<T> cacheManager;
 
-    private final HashMap<String, Method> syncLoadMethodMap;
-    private final HashMap<String, Method> asyncLoadMethodMap;
-
     private final Set<Method> syncLoadMethods;
     private final Set<Method> asyncLoadMethods;
 
     private final Set<Method> syncUnLoadMethods;
     private final Set<Method> asyncUnLoadMethods;
+
+    private final Set<Method> syncLoginMethods;
+    private final Set<Method> asyncLoginMethods;
 
     @SuppressWarnings("unchecked")
     public SessionCache(JavaPlugin plugin, CacheManager<T> manager, SessionManager sessionManager, boolean debug){
@@ -44,13 +49,12 @@ public class SessionCache<T extends CachedData> extends SessionDependency {
 
         this.DEBUG = debug;
 
-        this.syncLoadMethodMap = new HashMap<>();
-        this.asyncLoadMethodMap = new HashMap<>();
-
         this.syncLoadMethods = new HashSet<>();
         this.asyncLoadMethods = new HashSet<>();
         this.syncUnLoadMethods = new HashSet<>();
         this.asyncUnLoadMethods = new HashSet<>();
+        this.syncLoginMethods = new HashSet<>();
+        this.asyncLoginMethods = new HashSet<>();
 
         T obj = cacheManager.createCacheObject(null);
 
@@ -76,6 +80,7 @@ public class SessionCache<T extends CachedData> extends SessionDependency {
         Unimplemented because im stupid
          */
 
+        Bukkit.getPluginManager().registerEvents(this, plugin);
         sessionManager.registerDependency(this, "SessionCache");
     }
 
@@ -173,9 +178,6 @@ public class SessionCache<T extends CachedData> extends SessionDependency {
     }
 
     private void fetchMethods(Class clazz){
-        Set<CacheLoader> registeredLoad = new HashSet<>();
-        Set<CacheLoader> registeredUnLoad = new HashSet<>();
-
         for (Method method : clazz.getDeclaredMethods()){
             CacheLoader annotation = method.getDeclaredAnnotation(CacheLoader.class);
             if (method.getParameterCount() != 0 || annotation == null){
@@ -186,22 +188,16 @@ public class SessionCache<T extends CachedData> extends SessionDependency {
 
             switch (annotation.type()){
                 case LOAD:
-                    registeredLoad.add(annotation);
-
                     switch (annotation.thread()){
                         case SYNC:
                             syncLoadMethods.add(method);
-                            syncLoadMethodMap.put(annotation.name(), method);
                             break;
                         case ASYNC:
                             asyncLoadMethods.add(method);
-                            asyncLoadMethodMap.put(annotation.name(), method);
                             break;
                     }
                     break;
                 case UNLOAD:
-                    registeredUnLoad.add(annotation);
-
                     switch (annotation.thread()){
                         case SYNC:
                             syncUnLoadMethods.add(method);
@@ -211,39 +207,16 @@ public class SessionCache<T extends CachedData> extends SessionDependency {
                             break;
                     }
                     break;
-            }
-        }
-
-        for (CacheLoader loader : registeredLoad){
-            if (!loader.suppressWarnings()){
-                boolean error = true;
-                for (CacheLoader unLoader : registeredUnLoad){
-                    if (unLoader.name().equals(loader.name())){
-                        error = false;
-                        break;
+                case LOGIN:
+                    switch (annotation.thread()){
+                        case SYNC:
+                            syncLoginMethods.add(method);
+                            break;
+                        case ASYNC:
+                            asyncLoginMethods.add(method);
+                            break;
                     }
-                }
-
-                if (error){
-                    logger.severe("Cache load method does not have a matching unload method, " + loader.name());
-                }
-            }
-        }
-
-        for (CacheLoader unLoader : registeredUnLoad){
-            if (!unLoader.suppressWarnings()){
-
-                boolean error = true;
-                for (CacheLoader loader : registeredLoad){
-                    if (unLoader.name().equals(loader.name())){
-                        error = false;
-                        break;
-                    }
-                }
-
-                if (error){
-                    logger.severe("Cache unload method does not have a matching load method, " + unLoader.name());
-                }
+                    break;
             }
         }
     }
@@ -297,6 +270,25 @@ public class SessionCache<T extends CachedData> extends SessionDependency {
         return future;
     }
 
+    @EventHandler (ignoreCancelled = true, priority = EventPriority.HIGHEST)
+    public void onLogin(PlayerJoinEvent e){
+        T data = cache.get(e.getPlayer().getUniqueId());
+
+        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+            try {
+                asyncLogin(data);
+            } catch (IllegalAccessException|InvocationTargetException ex){
+                ex.printStackTrace();
+            }
+        });
+
+        try {
+            syncLogin(data);
+        } catch (IllegalAccessException|InvocationTargetException ex){
+            ex.printStackTrace();
+        }
+    }
+
     private void syncLoad(T data) throws IllegalAccessException, InvocationTargetException{
         for (Method method : syncLoadMethods){
             method.invoke(data);
@@ -321,16 +313,20 @@ public class SessionCache<T extends CachedData> extends SessionDependency {
         }
     }
 
+    private void syncLogin(T data) throws IllegalAccessException, InvocationTargetException{
+        for (Method method : syncLoginMethods){
+            method.invoke(data);
+        }
+    }
+
+    private void asyncLogin(T data) throws IllegalAccessException, InvocationTargetException{
+        for (Method method : asyncLoginMethods){
+            method.invoke(data);
+        }
+    }
+
     public CacheManager<T> getCacheManager() {
         return cacheManager;
-    }
-
-    public HashMap<String, Method> getSyncLoadMethodMap() {
-        return syncLoadMethodMap;
-    }
-
-    public HashMap<String, Method> getAsyncLoadMethodMap() {
-        return asyncLoadMethodMap;
     }
 
     Cache<UUID, T> getCache() {
