@@ -19,7 +19,7 @@ public class SessionEvents implements Listener {
         this.manager = manager;
     }
 
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     public void onAsyncPlayerPreLoginEvent(AsyncPlayerPreLoginEvent event){
         /*
          * Check if session exists -- if so stall, make all existing sessions closing

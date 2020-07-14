@@ -270,7 +270,7 @@ public class SessionCache<T extends CachedData> extends SessionDependency implem
         return future;
     }
 
-    @EventHandler (ignoreCancelled = true, priority = EventPriority.HIGHEST)
+    @EventHandler (ignoreCancelled = true, priority = EventPriority.HIGH)
     public void onLogin(PlayerJoinEvent e){
         T data = cache.get(e.getPlayer().getUniqueId());
 

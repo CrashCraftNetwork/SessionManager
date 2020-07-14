@@ -82,7 +82,7 @@
                 <artifactId>maven-jar-plugin</artifactId>
                 <version>2.3.1</version>
                 <configuration>
-                    <outputDirectory>../../Server/plugins</outputDirectory>
+                    <outputDirectory>../../Server116/plugins</outputDirectory>
                 </configuration>
             </plugin>
         </plugins>
@@ -134,7 +134,7 @@
         <dependency>
             <groupId>org.spigotmc</groupId>
             <artifactId>spigot-api</artifactId>
-            <version>1.15.2-R0.1-SNAPSHOT</version>
+            <version>1.16.1-R0.1-SNAPSHOT</version>
             <scope>provided</scope>
         </dependency>
         <dependency>
