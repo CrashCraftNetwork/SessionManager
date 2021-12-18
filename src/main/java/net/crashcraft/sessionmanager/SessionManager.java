@@ -48,7 +48,12 @@ public class SessionManager extends JavaPlugin {
         }
 
         manager = this;
+
         registeredDependency = new HashSet<>();
+    }
+
+    @Override
+    public void onEnable(){
         File dataFolder = getDataFolder();
 
         dataFolder.mkdirs();
@@ -56,7 +61,7 @@ public class SessionManager extends JavaPlugin {
         try {
             initConfig(new File(dataFolder, "config.yml"), GlobalConfig.class, null);
 
-            DatabaseOptions options = DatabaseOptions.builder().mysql(
+/*            DatabaseOptions options = DatabaseOptions.builder().mysql(
                     GlobalConfig.sql_user, GlobalConfig.sql_pass, GlobalConfig.sql_db, GlobalConfig.sql_ip
             ).build();
 
@@ -66,7 +71,9 @@ public class SessionManager extends JavaPlugin {
             });
 
             Database db = PooledDatabaseOptions.builder().options(options).createHikariDatabase();
-            DB.setGlobalDatabase(db);
+            DB.setGlobalDatabase(db);*/
+
+            DB.setGlobalDatabase(BukkitDB.createHikariDatabase(this, GlobalConfig.sql_user, GlobalConfig.sql_pass, GlobalConfig.sql_db, GlobalConfig.sql_ip));
 
             try {
                 DB.getFirstColumn("SELECT 1"); //Test quarry
@@ -91,10 +98,7 @@ public class SessionManager extends JavaPlugin {
             e.printStackTrace();
             Bukkit.getServer().shutdown();
         }
-    }
 
-    @Override
-    public void onEnable(){
         if (!loaded)
             return;
 
